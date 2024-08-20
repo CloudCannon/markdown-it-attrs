@@ -192,6 +192,11 @@ exports.hasDelimiters = function (where, options) {
       start = slice === options.leftDelimiter ? 0 : -1;
       slice = str.slice(str.length - options.rightDelimiter.length);
       end = slice === options.rightDelimiter ? str.length - options.rightDelimiter.length : -1;
+
+      // check if next character is not one of the delimiters
+      if (start >= 0 && str.slice(options.leftDelimiter.length, options.leftDelimiter.length * 2) === options.leftDelimiter) {
+        start = -1;
+      }
       break;
 
     default:

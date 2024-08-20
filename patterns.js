@@ -1,4 +1,7 @@
 'use strict';
+const hrBelow = require('./override-patterns/hr-below.js');
+const imgBelow = require('./override-patterns/img-below.js');
+const tableBelow = require('./override-patterns/table-below.js');
 /**
  * If a pattern matches the token stream,
  * then run transform.
@@ -6,12 +9,33 @@
 
 const utils = require('./utils.js');
 
+function patternToPositionBelow(tagName, options) {
+  if (tagName === 'table') {
+    return tableBelow(options);
+  }
+  if (tagName === 'hr') {
+    return hrBelow(options);
+  }
+  if (tagName === 'img') {
+    return imgBelow(options);
+  }
+
+  return null;
+}
+
+function removePattern(tagName, patterns) {
+  if (tagName === 'li') {
+    const patternIndex = patterns.findIndex((p) => p.name === 'list item end');
+    patterns.splice(patternIndex, 1);
+  }
+}
+
 module.exports = options => {
   const __hr = new RegExp('^ {0,3}[-*_]{3,} ?'
                           + utils.escapeRegExp(options.leftDelimiter)
                           + '[^' + utils.escapeRegExp(options.rightDelimiter) + ']');
 
-  return ([
+  const patterns = ([
     {
       /**
        * ```python {.cls}
@@ -333,6 +357,24 @@ module.exports = options => {
       }
     }
   ]);
+
+  const overrides = options.overrides || [];
+  overrides.forEach((override) => {
+    if (override && override.tag) {
+      if (override.attrPosition === 'below') {
+        const overridePattern = patternToPositionBelow(override.tag, options);
+        if (overridePattern) {
+          patterns.unshift(overridePattern);
+        }
+      }
+      if (override.attrPosition === 'none') {
+        removePattern(override.tag, patterns);
+      }
+    }
+
+  });
+
+  return patterns;
 };
 
 // get last element of array or string
