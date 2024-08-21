@@ -697,6 +697,32 @@ describe('markdown-it-attrs with some attributes positioned below', () => {
     assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), expected);
   });
 
+  it(replaceDelimiters('table with paragraph above and below', goldmarkOverrides), () => {
+    src = 'Table below';
+    src += '\n';
+    src += '| h1 |\n';
+    src += '| -- |\n';
+    src += '| c1 |\n';
+    src += '{.c}\n';
+    src += '\n';
+    src += 'Table above\n';
+    expected = '<p>Table below</p>\n';
+    expected += '<table class="c">\n';
+    expected += '<thead>\n';
+    expected += '<tr>\n';
+    expected += '<th>h1</th>\n';
+    expected += '</tr>\n';
+    expected += '</thead>\n';
+    expected += '<tbody>\n';
+    expected += '<tr>\n';
+    expected += '<td>c1</td>\n';
+    expected += '</tr>\n';
+    expected += '</tbody>\n';
+    expected += '</table>\n';
+    expected += '<p>Table above</p>\n';
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), expected);
+  });
+
   it(replaceDelimiters('should apply attributes to the last column of tables', goldmarkOverrides), () => {
     src = '| title | title {.title-primar} |\n';
     src += '| :---: | :---: |\n';

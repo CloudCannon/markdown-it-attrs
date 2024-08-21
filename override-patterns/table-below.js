@@ -38,20 +38,17 @@ module.exports = function(options) {
           indexOfLastRowClosingTag = j;
           continue;
         }
+        if (token.type === 'table_close') {
+          break;
+        }
         if (['td_open', 'td_close', 'tbody_close', 'table_close'].includes(token.type)) {
           continue;
         }
         if (token.type === 'inline') {
-          if (!token.content) {
-            continue;
-          }
-          if (utils.hasDelimiters('only', options)(token.content)) {
-            if (attrs) {
-              return;
-            }
+          if (token.content && !attrs && utils.hasDelimiters('only', options)(token.content)) {
             attrs = utils.getAttrs(token.content, 0, options);
-            continue;
           }
+          continue;
         }
         return;
       }
