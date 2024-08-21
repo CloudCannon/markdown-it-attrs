@@ -358,21 +358,21 @@ module.exports = options => {
     }
   ]);
 
-  const overrides = options.overrides || [];
-  overrides.forEach((override) => {
-    if (override && override.tag) {
-      if (override.attrPosition === 'below') {
-        const overridePattern = patternToPositionBelow(override.tag, options);
+  const overrides = options.overrides;
+  if (overrides && typeof overrides === 'object' && !Array.isArray(overrides)) {
+    Object.entries(overrides).forEach(([tag, position]) => {
+      if (position === 'below') {
+        const overridePattern = patternToPositionBelow(tag, options);
         if (overridePattern) {
           patterns.unshift(overridePattern);
         }
       }
-      if (override.attrPosition === 'none') {
-        removePattern(override.tag, patterns);
+      if (position === 'none') {
+        removePattern(tag, patterns);
       }
-    }
-
-  });
+  
+    });
+  }
 
   return patterns;
 };

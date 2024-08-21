@@ -448,12 +448,13 @@ function replaceDelimiters(text, options) {
 const goldmarkOverrides = {
   leftDelimiter: '{',
   rightDelimiter: '}',
-  overrides: [
-    { tag: 'img', attrPosition: 'below' },
-    { tag: 'table', attrPosition: 'below' },
-    { tag: 'li', attrPosition: 'none' },
-    { tag: 'hr', attrPosition: 'below' },
-  ]
+  overrides: {
+    'img': 'below',
+    'table': 'below',
+    'li': 'none',
+    'hr': 'below',
+  }
+  
 };
 
 describe('markdown-it-attrs with some attributes positioned below', () => {
