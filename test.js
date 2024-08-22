@@ -441,3 +441,429 @@ function describeTestsWithOptions(options, postText) {
 function replaceDelimiters(text, options) {
   return text.replace(/{/g, options.leftDelimiter).replace(/}/g, options.rightDelimiter);
 }
+
+
+/** Duplicated tests with overrides on attribute positions */
+
+const goldmarkOverrides = {
+  leftDelimiter: '{',
+  rightDelimiter: '}',
+  overrides: {
+    'img': 'below',
+    'table': 'below',
+    'li': 'none',
+    'hr': 'below',
+  }
+  
+};
+
+describe('markdown-it-attrs with some attributes positioned below', () => {
+  let md, src, expected;
+  beforeEach(() => {
+    md = Md().use(attrs, goldmarkOverrides);
+  });
+
+  it(replaceDelimiters('should add attributes when {} in end of last inline', goldmarkOverrides), () => {
+    src = 'some text\n{with=attrs}';
+    expected = '<p with="attrs">some text</p>\n';
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), expected);
+  });
+
+  it(replaceDelimiters('should not add attributes when it has too many delimiters {{}}', goldmarkOverrides), () => {
+    src = 'some text\n{{with=attrs}}';
+    expected = '<p>some text\n{{with=attrs}}</p>\n';
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), replaceDelimiters(expected, goldmarkOverrides));
+  });
+
+  it(replaceDelimiters('should add attributes when {} in last line', goldmarkOverrides), () => {
+    src = 'some text\n{with=attrs}';
+    expected = '<p with="attrs">some text</p>\n';
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), expected);
+  });
+
+  it(replaceDelimiters('should add classes with {.class} dot notation', goldmarkOverrides), () => {
+    src = 'some text\n{.green}';
+    expected = '<p class="green">some text</p>\n';
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), expected);
+  });
+
+  it(replaceDelimiters('should add css-modules with {..css-module} double dot notation', goldmarkOverrides), () => {
+    src = 'some text\n{..green}';
+    expected = '<p css-module="green">some text</p>\n';
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), expected);
+  });
+
+  it(replaceDelimiters('should add identifiers with {#id} hashtag notation', goldmarkOverrides), () => {
+    src = 'some text\n{#section2}';
+    expected = '<p id="section2">some text</p>\n';
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), expected);
+  });
+
+  it(replaceDelimiters('should support classes, css-modules, identifiers and attributes in same {}', goldmarkOverrides), () => {
+    src = 'some text\n{attr=lorem .class ..css-module #id}';
+    expected = '<p attr="lorem" class="class" css-module="css-module" id="id">some text</p>\n';
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), expected);
+  });
+
+  it(replaceDelimiters('should support attributes inside " {attr="lorem ipsum"}', goldmarkOverrides), () => {
+    src = 'some text\n{attr="lorem ipsum"}';
+    expected = '<p attr="lorem ipsum">some text</p>\n';
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), expected);
+  });
+
+  it(replaceDelimiters('should add classes in same class attribute {.c1 .c2} -> class="c1 c2"', goldmarkOverrides), () => {
+    src = 'some text\n{.c1 .c2}';
+    expected = '<p class="c1 c2">some text</p>\n';
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), expected);
+  });
+
+  it(replaceDelimiters('should add css-modules in same css-modules attribute {..c1 ..c2} -> css-module="c1 c2"', goldmarkOverrides), () => {
+    src = 'some text\n{..c1 ..c2}';
+    expected = '<p css-module="c1 c2">some text</p>\n';
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), expected);
+  });
+
+  it(replaceDelimiters('should add nested css-modules {..c1.c2} -> css-module="c1.c2"', goldmarkOverrides), () => {
+    src = 'some text\n{..c1.c2}';
+    expected = '<p css-module="c1.c2">some text</p>\n';
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), expected);
+  });
+
+  it(replaceDelimiters('should support empty inline tokens', goldmarkOverrides), () => {
+    src = ' 1 | 2 \n --|-- \n a | ';
+    md.render(replaceDelimiters(src, goldmarkOverrides));  // should not crash / throw error
+  });
+
+  it(replaceDelimiters('should add classes to inline elements', goldmarkOverrides), () => {
+    src = 'paragraph **bold**{.red} asdf';
+    expected = '<p>paragraph <strong class="red">bold</strong> asdf</p>\n';
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), expected);
+  });
+
+  it(replaceDelimiters('should not add classes to inline elements with too many {{}}', goldmarkOverrides), () => {
+    src = 'paragraph **bold**{{.red}} asdf';
+    expected = '<p>paragraph <strong>bold</strong>{{.red}} asdf</p>\n';
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), replaceDelimiters(expected, goldmarkOverrides));
+  });
+
+  it(replaceDelimiters('should only remove last {}', goldmarkOverrides), () => {
+    src = '{{.red}';
+    expected = replaceDelimiters('<p class="red">{</p>\n', goldmarkOverrides);
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), expected);
+  });
+
+  it(replaceDelimiters('should NOT add classes for list items', goldmarkOverrides), () => {
+    src = '- item 1{.red}\n- item 2';
+    expected = '<ul>\n';
+    expected += '<li>item 1</li>\n';
+    expected += '<li>item 2</li>\n';
+    expected += '</ul>\n';
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), expected);
+  });
+
+  it(replaceDelimiters('should add classes in nested lists', goldmarkOverrides), () => {
+    src =  '- item 1{.a}\n';
+    src += '  - nested item {.b}\n';
+    src += '  {.c}\n';
+    src += '    1. nested nested item {.d}\n';
+    src += '    {.e}\n';
+    // Adding class to top ul not supported
+    //    src += '{.f}';
+    //    expected = '<ul class="f">\n';
+    expected = '<ul>\n';
+    expected += '<li>item 1\n';
+    expected += '<ul class="c">\n';
+    expected += '<li>nested item\n';
+    expected += '<ol class="e">\n';
+    expected += '<li>nested nested item</li>\n';
+    expected += '</ol>\n';
+    expected += '</li>\n';
+    expected += '</ul>\n';
+    expected += '</li>\n';
+    expected += '</ul>\n';
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), expected);
+  });
+
+  it(replaceDelimiters('should work with nested inline elements', goldmarkOverrides), () => {
+    src = '- **bold *italics*{.blue}**{.green}';
+    expected = '<ul>\n';
+    expected += '<li><strong class="green">bold <em class="blue">italics</em></strong></li>\n';
+    expected += '</ul>\n';
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), expected);
+  });
+
+  it(replaceDelimiters('should add class to inline code block', goldmarkOverrides), () => {
+    src = 'bla `click()`{.c}';
+    expected = '<p>bla <code class="c">click()</code></p>\n';
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), expected);
+  });
+
+  it(replaceDelimiters('should not trim unrelated white space', goldmarkOverrides), () => {
+    src = '- **bold** text {.red}';
+    expected = '<ul>\n';
+    expected += '<li><strong>bold</strong> text</li>\n';
+    expected += '</ul>\n';
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), expected);
+  });
+
+  it(replaceDelimiters('should not create empty attributes', goldmarkOverrides), () => {
+    src = 'text\n{ .red }';
+    expected = '<p class="red">text</p>\n';
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), expected);
+  });
+
+  it(replaceDelimiters('should add attributes to ul when below last bullet point', goldmarkOverrides), () => {
+    src = '- item1\n- item2\n{.red}';
+    expected = '<ul class="red">\n<li>item1</li>\n<li>item2</li>\n</ul>\n';
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), expected);
+  });
+
+  it(replaceDelimiters('should add classes for both last list item and ul', goldmarkOverrides), () => {
+    src = '- item{.red}\n{.blue}';
+    expected = '<ul class="blue">\n';
+    expected += '<li>item</li>\n';
+    expected += '</ul>\n';
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), expected);
+  });
+
+  it(replaceDelimiters('should add class ul after a "softbreak"', goldmarkOverrides), () => {
+    src = '- item\n{.blue}';
+    expected = '<ul class="blue">\n';
+    expected += '<li>item</li>\n';
+    expected += '</ul>\n';
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), expected);
+  });
+
+  it(replaceDelimiters('should ignore non-text "attr-like" text after a "softbreak"', goldmarkOverrides), () => {
+    src = '- item\n*{.blue}*';
+    expected = '<ul>\n';
+    expected += '<li>item\n<em>{.blue}</em></li>\n';
+    expected += '</ul>\n';
+    assert.equal(md.render(src), expected);
+  });
+
+  it(replaceDelimiters('should work with ordered lists', goldmarkOverrides), () => {
+    src = '1. item\n{.blue}';
+    expected = '<ol class="blue">\n';
+    expected += '<li>item</li>\n';
+    expected += '</ol>\n';
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), expected);
+  });
+
+  it(replaceDelimiters('should work with typography enabled', goldmarkOverrides), () => {
+    src = 'text\n{key="val with spaces"}';
+    expected = '<p key="val with spaces">text</p>\n';
+    const res = md.set({ typographer: true }).render(replaceDelimiters(src, goldmarkOverrides));
+    assert.equal(res, expected);
+  });
+
+  it(replaceDelimiters('should support code blocks', goldmarkOverrides), () => {
+    src = '```{.c a=1 #ii}\nfor i in range(10):\n```';
+    expected = '<pre><code class="c" a="1" id="ii">for i in range(10):\n</code></pre>\n';
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), expected);
+  });
+
+  it(replaceDelimiters('should support code blocks with language defined', goldmarkOverrides), () => {
+    src = '```python {.c a=1 #ii}\nfor i in range(10):\n```';
+    expected = '<pre><code class="c language-python" a="1" id="ii">for i in range(10):\n</code></pre>\n';
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), expected);
+  });
+
+  it(replaceDelimiters('should support blockquotes', goldmarkOverrides), () => {
+    src = '> quote\n{.c}';
+    expected = '<blockquote class="c">\n<p>quote</p>\n</blockquote>\n';
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), expected);
+  });
+
+  it(replaceDelimiters('should support tables', goldmarkOverrides), () => {
+    src = '| h1 | h2 |\n';
+    src += '| -- | -- |\n';
+    src += '| c1 | c1 |\n';
+    src += '{.c}';
+    expected = '<table class="c">\n';
+    expected += '<thead>\n';
+    expected += '<tr>\n';
+    expected += '<th>h1</th>\n';
+    expected += '<th>h2</th>\n';
+    expected += '</tr>\n';
+    expected += '</thead>\n';
+    expected += '<tbody>\n';
+    expected += '<tr>\n';
+    expected += '<td>c1</td>\n';
+    expected += '<td>c1</td>\n';
+    expected += '</tr>\n';
+    expected += '</tbody>\n';
+    expected += '</table>\n';
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), expected);
+  });
+
+  it(replaceDelimiters('table with paragraph above and below', goldmarkOverrides), () => {
+    src = 'Table below';
+    src += '\n';
+    src += '| h1 |\n';
+    src += '| -- |\n';
+    src += '| c1 |\n';
+    src += '{.c}\n';
+    src += '\n';
+    src += 'Table above\n';
+    expected = '<p>Table below</p>\n';
+    expected += '<table class="c">\n';
+    expected += '<thead>\n';
+    expected += '<tr>\n';
+    expected += '<th>h1</th>\n';
+    expected += '</tr>\n';
+    expected += '</thead>\n';
+    expected += '<tbody>\n';
+    expected += '<tr>\n';
+    expected += '<td>c1</td>\n';
+    expected += '</tr>\n';
+    expected += '</tbody>\n';
+    expected += '</table>\n';
+    expected += '<p>Table above</p>\n';
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), expected);
+  });
+
+  it(replaceDelimiters('should apply attributes to the last column of tables', goldmarkOverrides), () => {
+    src = '| title | title {.title-primar} |\n';
+    src += '| :---: | :---: |\n';
+    src += '| text | text {.text-primar} |\n';
+    src += '| text {.text-primary} | text |\n';
+    src += '\n';
+    src += '{.c}';
+    expected = '<table class="c">\n';
+    expected += '<thead>\n';
+    expected += '<tr>\n';
+    expected += '<th style="text-align:center">title</th>\n';
+    expected += '<th style="text-align:center" class="title-primar">title</th>\n';
+    expected += '</tr>\n';
+    expected += '</thead>\n';
+    expected += '<tbody>\n';
+    expected += '<tr>\n';
+    expected += '<td style="text-align:center">text</td>\n';
+    expected += '<td style="text-align:center" class="text-primar">text</td>\n';
+    expected += '</tr>\n';
+    expected += '<tr>\n';
+    expected += '<td style="text-align:center" class="text-primary">text</td>\n';
+    expected += '<td style="text-align:center">text</td>\n';
+    expected += '</tr>\n';
+    expected += '</tbody>\n';
+    expected += '</table>\n';
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), expected);
+  });
+
+  it(replaceDelimiters('should support nested lists', goldmarkOverrides), () => {
+    src =  '- item\n';
+    src += '  - nested\n';
+    src += '  {.red}\n';
+    src += '\n';
+    src += '{.blue}\n';
+    expected = '<ul class="blue">\n';
+    expected += '<li>item\n';
+    expected += '<ul class="red">\n';
+    expected += '<li>nested</li>\n';
+    expected += '</ul>\n';
+    expected += '</li>\n';
+    expected += '</ul>\n';
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), expected);
+  });
+
+  it(replaceDelimiters('should support images', goldmarkOverrides), () => {
+    src =  '![alt](img.png)\n{.a}';
+    expected = '<p><img src="img.png" alt="alt" class="a"></p>\n';
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), expected);
+  });
+
+  it(replaceDelimiters('should work with plugin implicit-figures', goldmarkOverrides), () => {
+    md = md.use(implicitFigures);
+    src =  '![alt](img.png)\n{.a}';
+    expected = '<figure><img src="img.png" alt="alt" class="a"></figure>\n';
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), expected);
+  });
+
+  it(replaceDelimiters('should work with plugin katex', goldmarkOverrides), () => {
+    md = md.use(katex);
+    const mdWithOnlyKatex = Md().use(katex);
+    src = '$\\sqrt{a}$';
+    assert.equal(md.render(src), mdWithOnlyKatex.render(src));
+  });
+
+  it(replaceDelimiters('should not apply inside `code{.red}`', goldmarkOverrides), () => {
+    src =  'paragraph `code{.red}`';
+    expected = '<p>paragraph <code>code{.red}</code></p>\n';
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), replaceDelimiters(expected, goldmarkOverrides));
+  });
+
+  it(replaceDelimiters('should not apply inside item lists with trailing `code{.red}`', goldmarkOverrides), () => {
+    src = '- item with trailing `code = {.red}`';
+    expected = '<ul>\n<li>item with trailing <code>code = {.red}</code></li>\n</ul>\n';
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), replaceDelimiters(expected, goldmarkOverrides));
+  });
+
+  it(replaceDelimiters('should not apply inside item lists with trailing non-text, eg *{.red}*', goldmarkOverrides), () => {
+    src = '- item with trailing *{.red}*';
+    expected = '<ul>\n<li>item with trailing <em>{.red}</em></li>\n</ul>\n';
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), replaceDelimiters(expected, goldmarkOverrides));
+  });
+
+  it(replaceDelimiters('should work with multiple inline code blocks in same paragraph', goldmarkOverrides), () => {
+    src = 'bla `click()`{.c} blah `release()`{.cpp}';
+    expected = '<p>bla <code class="c">click()</code> blah <code class="cpp">release()</code></p>\n';
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), expected);
+  });
+
+  it(replaceDelimiters('should support {} curlies with length == 3', goldmarkOverrides), () => {
+    src = 'text {1}';
+    expected = '<p 1="">text</p>\n';
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), expected);
+  });
+
+  it(replaceDelimiters('should do nothing with empty classname {.}', goldmarkOverrides), () => {
+    src = 'text {.}';
+    expected = '<p>text {.}</p>\n';
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), replaceDelimiters(expected, goldmarkOverrides));
+  });
+
+  it(replaceDelimiters('should do nothing with empty id {#}', goldmarkOverrides), () => {
+    src = 'text {#}';
+    expected = '<p>text {#}</p>\n';
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), replaceDelimiters(expected, goldmarkOverrides));
+  });
+
+  it(replaceDelimiters('should support horizontal rules ---{#id}', goldmarkOverrides), () => {
+    src = '---\n{#id}';
+    expected = '<hr id="id">\n';
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), expected);
+  });
+
+  it('should restrict attributes by allowedAttributes (string)', () => {
+    md = Md().use(attrs, Object.assign({ allowedAttributes: ['id', 'class'] }, goldmarkOverrides));
+    src = 'text\n{.someclass #someid attr=notAllowed}';
+    expected = '<p class="someclass" id="someid">text</p>\n';
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), expected);
+  });
+
+  it('should restrict attributes by allowedAttributes (regex)', () => {
+    md = Md().use(attrs, Object.assign({ allowedAttributes: [/^(class|attr)$/] }, goldmarkOverrides));
+    src = 'text\n{.someclass #someid attr=allowed}';
+    expected = '<p class="someclass" attr="allowed">text</p>\n';
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), expected);
+  });
+
+  it('should support multiple classes for <hr>', () => {
+    src = '---\n{.a .b}';
+    expected = '<hr class="a b">\n';
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), expected);
+  });
+
+  it(replaceDelimiters('should not crash on {#ids} in front of list items', goldmarkOverrides), () => {
+    src = '- {#ids} [link](./link)';
+    expected = replaceDelimiters('<ul>\n<li>{#ids} <a href="./link">link</a></li>\n</ul>\n', goldmarkOverrides);
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), expected);
+  });
+
+  it(replaceDelimiters('should support empty quoted attrs', goldmarkOverrides), () => {
+    src = '![](https://example.com/image.jpg)\n{class="" height="100" width=""}';
+    expected = replaceDelimiters('<p><img src="https://example.com/image.jpg" alt="" class="" height="100" width=""></p>\n', goldmarkOverrides);
+    assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), expected);
+  });
+});
