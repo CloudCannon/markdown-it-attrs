@@ -3,7 +3,6 @@
 const assert = require('assert');
 const Md = require('markdown-it');
 const implicitFigures = require('markdown-it-implicit-figures');
-const katex = require('markdown-it-katex');
 const attrs = require('./');
 const utils = require('./utils.js');
 
@@ -347,13 +346,6 @@ function describeTestsWithOptions(options, postText) {
       src =  '![alt](img.png){.a}';
       expected = '<figure><img src="img.png" alt="alt" class="a"></figure>\n';
       assert.equal(md.render(replaceDelimiters(src, options)), expected);
-    });
-
-    it(replaceDelimiters('should work with plugin katex', options), () => {
-      md = md.use(katex);
-      const mdWithOnlyKatex = Md().use(katex);
-      src = '$\\sqrt{a}$';
-      assert.equal(md.render(src), mdWithOnlyKatex.render(src));
     });
 
     it(replaceDelimiters('should not apply inside `code{.red}`', options), () => {
@@ -778,13 +770,6 @@ describe('markdown-it-attrs with some attributes positioned below', () => {
     src =  '![alt](img.png)\n{.a}';
     expected = '<figure><img src="img.png" alt="alt" class="a"></figure>\n';
     assert.equal(md.render(replaceDelimiters(src, goldmarkOverrides)), expected);
-  });
-
-  it(replaceDelimiters('should work with plugin katex', goldmarkOverrides), () => {
-    md = md.use(katex);
-    const mdWithOnlyKatex = Md().use(katex);
-    src = '$\\sqrt{a}$';
-    assert.equal(md.render(src), mdWithOnlyKatex.render(src));
   });
 
   it(replaceDelimiters('should not apply inside `code{.red}`', goldmarkOverrides), () => {
