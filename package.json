@@ -15,10 +15,7 @@
     "node": ">=6"
   },
   "scripts": {
-    "browser": "browserify index.js -t [ babelify --presets [ @babel/preset-env ] ] --standalone markdown-it-attrs -o markdown-it-attrs.browser.js",
     "lint": "eslint .",
-    "preversion": "mocha && npm run browser && git add markdown-it-attrs.browser.js",
-    "postpublish": "git push && git push --tags",
     "test": "npm run lint && nyc mocha"
   },
   "homepage": "https://github.com/arve0/markdown-it-attrs",
@@ -36,10 +33,6 @@
     "header_attributes"
   ],
   "devDependencies": {
-    "@babel/core": "^7.20.5",
-    "@babel/preset-env": "^7.20.2",
-    "babelify": "^10.0.0",
-    "browserify": "^17.0.0",
     "eslint": "^8.4.1",
     "markdown-it": "^13.0.1",
     "markdown-it-implicit-figures": "^0.9.0",
@@ -48,6 +41,5 @@
   },
   "peerDependencies": {
     "markdown-it": ">= 9.0.0"
-  },
-  "tonicExampleFilename": "demo.js"
+  }
 }
