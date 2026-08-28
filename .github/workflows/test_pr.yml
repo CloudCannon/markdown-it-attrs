@@ -1,7 +1,5 @@
 name: Test Pull Request
 
-# Runs the checks required before merging a PR.
-
 on:
   pull_request:
     branches: ["master"]
@@ -9,27 +7,11 @@ on:
 jobs:
   test:
     name: Test
-    runs-on: ${{matrix.os}}
-    defaults:
-      run:
-        shell: bash
-    strategy:
-      matrix:
-        include:
-          - build: linux
-            os: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           cache: 'npm'
-
-      - name: Install
-        run: |
-          npm ci
-
-      - name: Unit Test
-        run: npm run test
+      - run: npm ci
+      - run: npm test
