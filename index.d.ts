@@ -1,3 +1,19 @@
-import MarkdownIt = require("markdown-it");
-declare function attrs(md: MarkdownIt): void;
-export = attrs;
+import MarkdownIt = require('markdown-it');
+
+declare namespace markdownItAttrs {
+  type AllowedAttribute = string | RegExp;
+
+  interface Options {
+    leftDelimiter?: string;
+    rightDelimiter?: string;
+    allowedAttributes?: AllowedAttribute[];
+    allowedAttributeValues?: AllowedAttribute[];
+    fenceAttrsOnPre?: boolean;
+    errorHandler?: (error: Error, patternName: string) => void;
+    overrides?: { [tagName: string]: 'below' | 'none' };
+  }
+}
+
+declare function markdownItAttrs(md: MarkdownIt, options?: markdownItAttrs.Options): void;
+
+export = markdownItAttrs;

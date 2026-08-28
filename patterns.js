@@ -30,6 +30,10 @@ function removePattern(tagName, patterns) {
   }
 }
 
+/**
+ * @param {import('.').Options} options
+ * @returns {import('.').CurlyAttrsPattern[]}
+ */
 module.exports = options => {
   const __hr = new RegExp('^ {0,3}[-*_]{3,} ?'
                           + utils.escapeRegExp(options.leftDelimiter)
@@ -53,7 +57,7 @@ module.exports = options => {
       ],
       transform: (tokens, i) => {
         const token = tokens[i];
-        const start = token.info.lastIndexOf(options.leftDelimiter);
+        const start = utils.findLeftDelimiter(token.info, options);
         const attrs = utils.getAttrs(token.info, start, options);
         utils.addAttrs(attrs, token);
         token.info = utils.removeDelimiter(token.info, options);
@@ -82,6 +86,9 @@ module.exports = options => {
           ]
         }
       ],
+      /**
+       * @param {!number} j
+       */
       transform: (tokens, i, j) => {
         const token = tokens[i].children[j];
         const endChar = token.content.indexOf(options.rightDelimiter);
@@ -129,6 +136,142 @@ module.exports = options => {
       }
     }, {
       /**
+       * | A | B |
+       * | -- | -- |
+       * | 1 | 2 |
+       *
+       * | C | D |
+       * | -- | -- |
+       *
+       * only `| A | B |` sets the colsnum metadata
+       */
+      name: 'tables thead metadata',
+      tests: [
+        {
+          shift: 0,
+          type: 'tr_close',
+        }, {
+          shift: 1,
+          type: 'thead_close'
+        }, {
+          shift: 2,
+          type: 'tbody_open'
+        }
+      ],
+      transform: (tokens, i) => {
+        const tr = utils.getMatchingOpeningToken(tokens, i);
+        const th = tokens[i - 1];
+        let colsnum = 0;
+        let n = i;
+        while (--n) {
+          if (tokens[n] === tr) {
+            tokens[n - 1].meta = Object.assign({}, tokens[n + 2].meta, { colsnum });
+            break;
+          }
+          colsnum += (tokens[n].level === th.level && tokens[n].type === th.type) >> 0;
+        }
+        tokens[i + 2].meta = Object.assign({}, tokens[i + 2].meta, { colsnum });
+      }
+    }, {
+      /**
+       * | A | B | C | D |
+       * | -- | -- | -- | -- |
+       * | 1 | 11 | 111 | 1111 {rowspan=3} |
+       * | 2 {colspan=2 rowspan=2} | 22 | 222 | 2222 |
+       * | 3 | 33 | 333 | 3333 |
+       */
+      name: 'tables tbody calculate',
+      tests: [
+        {
+          shift: 0,
+          type: 'tbody_close',
+          hidden: false
+        }
+      ],
+      /**
+       * @param {number} i index of the tbody ending
+       */
+      transform: (tokens, i) => {
+        /** index of the tbody beginning */
+        let idx = i - 2;
+        while (idx > 0 && 'tbody_open' !== tokens[--idx].type);
+
+        const calc = (tokens[idx].meta && tokens[idx].meta.colsnum) >> 0;
+        if (calc < 2) { return; }
+
+        const level = tokens[i].level + 2;
+        for (let n = idx; n < i; n++) {
+          if (tokens[n].level > level) { continue; }
+
+          const token = tokens[n];
+          const rows = token.hidden ? 0 : token.attrGet('rowspan') >> 0;
+          const cols = token.hidden ? 0 : token.attrGet('colspan') >> 0;
+
+          if (rows > 1) {
+            let colsnum = calc - (cols > 0 ? cols : 1);
+            for (let k = n, num = rows; k < i, num > 1; k++) {
+              if ('tr_open' == tokens[k].type) {
+                tokens[k].meta = Object.assign({}, tokens[k].meta);
+                if (tokens[k].meta && tokens[k].meta.colsnum) {
+                  colsnum -= 1;
+                }
+                tokens[k].meta.colsnum = colsnum;
+                num--;
+              }
+            }
+          }
+
+          if ('tr_open' == token.type && token.meta && token.meta.colsnum) {
+            const max = token.meta.colsnum;
+            for (let k = n, num = 0; k < i; k++) {
+              if ('td_open' == tokens[k].type) {
+                num += 1;
+              } else if ('tr_close' == tokens[k].type) {
+                break;
+              }
+              num > max && (tokens[k].hidden || hidden(tokens[k]));
+            }
+          }
+
+          if (cols > 1) {
+            /** @type {number[]} index of one row's children */
+            const one = [];
+            /** last index of the row's children */
+            let end = n + 3;
+            /** number of the row's children */
+            let num = calc;
+
+            for (let k = n; k > idx; k--) {
+              if ('tr_open' == tokens[k].type) {
+                num = tokens[k].meta && tokens[k].meta.colsnum || num;
+                break;
+              } else if ('td_open' === tokens[k].type) {
+                one.unshift(k);
+              }
+            }
+
+            for (let k = n + 2; k < i; k++) {
+              if ('tr_close' == tokens[k].type) {
+                end = k;
+                break;
+              } else if ('td_open' == tokens[k].type) {
+                one.push(k);
+              }
+            }
+
+            const off = one.indexOf(n);
+            let real = num - off;
+            real = real > cols ? cols : real;
+            cols > real && token.attrSet('colspan', real + '');
+
+            for (let k = one.slice(num + 1 - calc - real)[0]; k < end; k++) {
+              tokens[k].hidden || hidden(tokens[k]);
+            }
+          }
+        }
+      }
+    }, {
+      /**
        * *emphasis*{.with attrs=1}
        */
       name: 'inline attributes',
@@ -148,6 +291,9 @@ module.exports = options => {
           ]
         }
       ],
+      /**
+       * @param {!number} j
+       */
       transform: (tokens, i, j) => {
         const token = tokens[i].children[j];
         const content = token.content;
@@ -181,6 +327,9 @@ module.exports = options => {
           ]
         }
       ],
+      /**
+       * @param {!number} j
+       */
       transform: (tokens, i, j) => {
         const token = tokens[i].children[j];
         const content = token.content;
@@ -251,12 +400,15 @@ module.exports = options => {
           ]
         }
       ],
+      /**
+       * @param {!number} j
+       */
       transform: (tokens, i, j) => {
         const token = tokens[i].children[j];
         const content = token.content;
-        const attrs = utils.getAttrs(content, content.lastIndexOf(options.leftDelimiter), options);
+        const attrs = utils.getAttrs(content, utils.findLeftDelimiter(content, options), options);
         utils.addAttrs(attrs, tokens[i - 2]);
-        const trimmed = content.slice(0, content.lastIndexOf(options.leftDelimiter));
+        const trimmed = content.slice(0, utils.findLeftDelimiter(content, options));
         token.content = last(trimmed) !== ' ' ?
           trimmed : trimmed.slice(0, -1);
       }
@@ -282,6 +434,9 @@ module.exports = options => {
           ]
         }
       ],
+      /**
+       * @param {!number} j
+       */
       transform: (tokens, i, j) => {
         const token = tokens[i].children[j];
         const attrs = utils.getAttrs(token.content, 0, options);
@@ -328,30 +483,32 @@ module.exports = options => {
     }, {
       /**
        * end of {.block}
+       *
+       * Also handles the case where a navigation plugin (e.g. heading anchors)
+       * adds non-text tokens after the heading text before curly_attributes runs.
+       * In that case the last meaningful text child (skipping trailing whitespace-only
+       * text tokens and balanced inline-tag sequences such as link_open/link_close)
+       * is used instead of the absolute last child.
        */
       name: 'end of block',
       tests: [
         {
           shift: 0,
           type: 'inline',
-          children: [
-            {
-              position: -1,
-              content: utils.hasDelimiters('end', options),
-              type: (t) => t !== 'code_inline' && t !== 'math_inline'
-            }
-          ]
+          children: (arr) => endOfBlockSearch(arr, options) !== null
         }
       ],
-      transform: (tokens, i, j) => {
-        const token = tokens[i].children[j];
+      transform: (tokens, i) => {
+        const token = endOfBlockSearch(tokens[i].children, options);
+        if (!token) { return; }
         const content = token.content;
-        const attrs = utils.getAttrs(content, content.lastIndexOf(options.leftDelimiter), options);
+        const attrs = utils.getAttrs(content, utils.findLeftDelimiter(content, options), options);
         let ii = i + 1;
-        do if (tokens[ii] && tokens[ii].nesting === -1) { break; } while (ii++ < tokens.length);
+        while (ii < tokens.length && tokens[ii].nesting !== -1) { ii++; }
+        if (ii >= tokens.length) { return; }
         const openingToken = utils.getMatchingOpeningToken(tokens, ii);
         utils.addAttrs(attrs, openingToken);
-        const trimmed = content.slice(0, content.lastIndexOf(options.leftDelimiter));
+        const trimmed = content.slice(0, utils.findLeftDelimiter(content, options));
         token.content = last(trimmed) !== ' ' ?
           trimmed : trimmed.slice(0, -1);
       }
@@ -380,4 +537,79 @@ module.exports = options => {
 // get last element of array or string
 function last(arr) {
   return arr.slice(-1)[0];
+}
+
+/**
+ * Search backward through inline children for the last non-whitespace text
+ * child that has attrs at its end (e.g. `{#id}`), skipping over:
+ *   - balanced inline-tag sequences at the top level (nesting +1/-1 pairs,
+ *     such as a navigation anchor link_open … link_close appended by a
+ *     heading-anchor plugin), and
+ *   - whitespace-only text tokens (e.g. the space injected before a permalink).
+ *
+ * Returns the matching token, or null if none found.
+ *
+ * @param {import('.').Token[]} arr  Children of the inline token.
+ * @param {import('.').Options} options
+ * @returns {import('.').Token|null}
+ */
+function endOfBlockSearch(arr, options) {
+  // `depth` tracks how many levels deep we are in nested inline structures
+  // when traversing backward.  depth=0 means we are at the top level of the
+  // inline token's children; depth>0 means we are inside a nested structure
+  // (e.g. inside an em or strong that comes after the text we care about).
+  let depth = 0;
+  for (let k = arr.length - 1; k >= 0; k--) {
+    const child = arr[k];
+    if (child.type === 'code_inline' || child.type === 'math_inline') {
+      return null;
+    }
+    if (child.nesting === -1) {
+      // Closing inline tag: we're entering a nested structure going backward.
+      depth++;
+      continue;
+    }
+    if (child.nesting === 1) {
+      // Opening inline tag: we're exiting a nested structure going backward.
+      depth--;
+      if (depth < 0) {
+        // Unmatched opening tag – stop searching.
+        return null;
+      }
+      continue;
+    }
+    // nesting === 0 (text, html_inline, softbreak, etc.)
+    if (depth > 0) {
+      // Inside a nested structure: skip.
+      continue;
+    }
+    // Top-level token (depth === 0).
+    if (child.type !== 'text') {
+      // Non-text self-closing token at top level (e.g. html_inline "#"): skip.
+      continue;
+    }
+    if (child.content.trim() === '') {
+      // Whitespace-only text (e.g. the space before a permalink): skip.
+      continue;
+    }
+    // Found the last meaningful text child – check for attrs.
+    return utils.hasDelimiters('end', options)(child.content) ? child : null;
+  }
+  return null;
+}
+
+/**
+ * Hidden table's cells and them inline children,
+ * specially cast inline's content as empty
+ * to prevent that escapes the table's box model
+ * @see https://github.com/markdown-it/markdown-it/issues/639
+ * @param {import('.').Token} token
+ */
+function hidden(token) {
+  token.hidden = true;
+  token.children && token.children.forEach(t => (
+    t.content = '',
+    hidden(t),
+    undefined
+  ));
 }

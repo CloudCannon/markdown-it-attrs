@@ -1,4 +1,4 @@
-# markdown-it-attrs [![Build Status](https://travis-ci.org/arve0/markdown-it-attrs.svg?branch=master)](https://travis-ci.org/arve0/markdown-it-attrs) [![npm version](https://badge.fury.io/js/markdown-it-attrs.svg)](http://badge.fury.io/js/markdown-it-attrs) [![Coverage Status](https://coveralls.io/repos/github/arve0/markdown-it-attrs/badge.svg?branch=master)](https://coveralls.io/github/arve0/markdown-it-attrs?branch=master) <!-- omit in toc -->
+# markdown-it-attrs [![GitHub actions](https://github.com/arve0/markdown-it-attrs/workflows/ci/badge.svg)](https://github.com/arve0/markdown-it-attrs/actions) [![npm version](https://badge.fury.io/js/markdown-it-attrs.svg)](http://badge.fury.io/js/markdown-it-attrs) [![Coverage Status](https://coveralls.io/repos/github/arve0/markdown-it-attrs/badge.svg?branch=master)](https://coveralls.io/github/arve0/markdown-it-attrs?branch=master) <!-- omit in toc -->
 
 Add classes, identifiers and attributes to your markdown with `{.class #identifier attr=value attr2="spaced value"}` curly brackets, similar to [pandoc's header attributes](http://pandoc.org/README.html#extension-header_attributes).
 
@@ -8,6 +8,7 @@ Add classes, identifiers and attributes to your markdown with `{.class #identifi
 - [Support](#support)
 - [Usage](#usage)
 - [Security](#security)
+- [Error handling](#error-handling)
 - [Limitations](#limitations)
 - [Ambiguity](#ambiguity)
 - [Custom rendering](#custom-rendering)
@@ -47,8 +48,7 @@ nums = [x for x in range(10)]
 
 Output:
 ```html
-<pre><code data="asdf" class="language-python">
-nums = [x for x in range(10)]
+<pre data="asdf"><code class="language-python">nums = [x for x in range(10)]
 </code></pre>
 ```
 
@@ -136,6 +136,22 @@ Output:
 ```html
 <p id="red" class="green" regex="allowed">text</p>
 ```
+
+## Error handling
+
+By default, if a pattern transform throws an error, the error is logged with `console.error`
+and rendering continues with a best-effort result. Pass `errorHandler` to change this behavior:
+
+```js
+md.use(markdownItAttrs, {
+  errorHandler: (error, patternName) => {
+    throw error;
+  }
+});
+```
+
+If it throws the error like above, the error propagates out of `md.render()` / `md.renderInline()`,
+otherwise rendering continues as normal.
 
 ## Limitations
 markdown-it-attrs relies on markdown parsing in markdown-it, which means some
@@ -250,38 +266,96 @@ Output:
 </table>
 ```
 
+Wellformed the table's _rowspan_ and/or _colspan_ attributes, usage sample below:
+```md
+| A                       | B   | C   | D                |
+| ----------------------- | --- | --- | ---------------- |
+| 1                       | 11  | 111 | 1111 {rowspan=3} |
+| 2 {colspan=2 rowspan=2} | 22  | 222 | 2222             |
+| 3                       | 33  | 333 | 3333             |
+
+{border=1}
+```
+
+Output:
+```html
+<table border="1">
+  <thead>
+    <tr>
+      <th>A</th>
+      <th>B</th>
+      <th>C</th>
+      <th>D</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>11</td>
+      <td>111</td>
+      <td rowspan="3">1111</td>
+    </tr>
+    <tr>
+      <td colspan="2" rowspan="2">2</td>
+      <td>22</td>
+    </tr>
+    <tr>
+      <td>3</td>
+    </tr>
+  </tbody>
+</table>
+```
+
 If you need finer control, [decorate](https://github.com/rstacruz/markdown-it-decorate) might help you.
 
 ## Custom rendering
-If you would like some other output, you can override renderers:
+By default, fenced code block attributes are rendered on `<pre>`.
+
+If you prefer markdown-it's default behavior (attributes on `<code>`), opt out:
 
 ```js
 const md = require('markdown-it')();
 const markdownItAttrs = require('markdown-it-attrs');
 
-md.use(markdownItAttrs);
+md.use(markdownItAttrs, {
+  fenceAttrsOnPre: false
+});
+```
 
-// custom renderer for fences
+If you need fully custom output, define your own `fence` renderer. The plugin
+will not override an existing custom `fence` renderer.
+
+```js
+const md = require('markdown-it')();
+const markdownItAttrs = require('markdown-it-attrs');
+
 md.renderer.rules.fence = function (tokens, idx, options, env, slf) {
   const token = tokens[idx];
-  return  '<pre' + slf.renderAttrs(token) + '>'
-    + '<code>' + token.content + '</code>'
-    + '</pre>';
-}
+  const info = token.info ? token.info.trim() : '';
+  const langName = info ? info.split(/\s+/g)[0] : '';
+  const langClass = langName ? ' class="' + options.langPrefix + langName + '"' : '';
+  const content = md.utils.escapeHtml(token.content);
 
-let src = [
+  return '<pre' + slf.renderAttrs(token) + '><code' + langClass + '>'
+    + content
+    + '</code></pre>\n';
+};
+
+md.use(markdownItAttrs);
+
+const src = [
   '',
   '```js {.abcd}',
   'var a = 1;',
   '```'
-].join('\n')
+].join('\n');
 
 console.log(md.render(src));
 ```
 
 Output:
 ```html
-<pre class="abcd"><code>var a = 1;
+<pre class="abcd"><code class="language-js">var a = 1;
 </code></pre>
 ```
 

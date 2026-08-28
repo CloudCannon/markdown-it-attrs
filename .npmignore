@@ -6,4 +6,11 @@
 /.travis.yml
 /.eslintignore
 /.eslintrc.js
+/.eslintrc.json
 /.editorconfig
+/.gitignore
+/.github
+/.devcontainer
+/debug.js
+/test-types.ts
+/tsconfig.json
