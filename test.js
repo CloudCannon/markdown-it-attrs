@@ -2,7 +2,10 @@
 'use strict';
 const assert = require('assert');
 const Md = require('markdown-it');
+const container = require('markdown-it-container');
 const implicitFigures = require('markdown-it-implicit-figures');
+const katex = require('markdown-it-katex');
+const multimdTable = require('markdown-it-multimd-table');
 const attrs = require('./');
 const utils = require('./utils.js');
 
@@ -31,6 +34,108 @@ describe('markdown-it-attrs', () => {
     expected = '<p class="someclass" attr="allowed">text</p>\n';
     assert.equal(md.render(src), expected);
   });
+
+  it('should not throw on tables without thead (headerless tables)', () => {
+    md = Md().use(multimdTable, { headerless: true }).use(attrs);
+    src = '| - | - |\n| a | b |\n| c | d |\n';
+    let result;
+    assert.doesNotThrow(() => { result = md.render(src); });
+    expected = '<table>\n<tbody>\n<tr>\n<td>a</td>\n<td>b</td>\n</tr>\n<tr>\n<td>c</td>\n<td>d</td>\n</tr>\n</tbody>\n</table>\n';
+    assert.equal(result, expected);
+  });
+
+  it('should apply attributes on headerless tables', () => {
+    md = Md().use(multimdTable, { headerless: true }).use(attrs);
+    src = '| - | - |\n| a | b |\n| c | d |\n{a=b}\n';
+    expected = '<table a="b">\n<tbody>\n<tr>\n<td>a</td>\n<td>b</td>\n</tr>\n<tr>\n<td>c</td>\n<td>d</td>\n</tr>\n</tbody>\n</table>\n';
+    assert.equal(md.render(src), expected);
+  });
+
+  it('should parse attribute values containing closing curly braces in quotes', () => {
+    md = Md().use(attrs);
+    src = 'this is the markdown I\'m trying to parse {.replace-me data-tex="e^{i}=-1"}';
+    expected = '<p class="replace-me" data-tex="e^{i}=-1">this is the markdown I\'m trying to parse</p>\n';
+    assert.equal(md.render(src), expected);
+  });
+});
+
+describe('markdown-it-attrs fence renderer', () => {
+  it('should add attributes to <pre> on fenced code blocks', () => {
+    const md = Md().use(attrs);
+    const src = '```js {data-file="index.js"}\nfoo();\n```';
+    const res = md.render(src);
+    assert.equal(res, '<pre data-file="index.js"><code class="language-js">foo();\n</code></pre>\n');
+  });
+
+  it('should keep language class on <code> with no attrs', () => {
+    const md = Md().use(attrs);
+    const src = '```js\nfoo();\n```';
+    const res = md.render(src);
+    assert.equal(res, '<pre><code class="language-js">foo();\n</code></pre>\n');
+  });
+
+  it('should not override an existing custom fence renderer', () => {
+    const md = Md();
+    const customFence = (tokens, idx) => {
+      const token = tokens[idx];
+      return '<pre class="custom"><code>' + md.utils.escapeHtml(token.content) + '</code></pre>\n';
+    };
+    md.renderer.rules.fence = customFence;
+    md.use(attrs);
+
+    const src = '```js {data-file="index.js"}\nfoo();\n```';
+    const res = md.render(src);
+    assert.equal(md.renderer.rules.fence, customFence);
+    assert.equal(res, '<pre class="custom"><code>foo();\n</code></pre>\n');
+  });
+
+  it('should allow opting out of pre attrs renderer', () => {
+    const md = Md().use(attrs, { fenceAttrsOnPre: false });
+    const src = '```js {data-file="index.js"}\nfoo();\n```';
+    const res = md.render(src);
+    assert.equal(res, '<pre><code data-file="index.js" class="language-js">foo();\n</code></pre>\n');
+  });
+});
+
+describe('markdown-it-attrs errorHandler', () => {
+  // an allowedAttributes RegExp that throws an error on test/render
+  class ThrowingRegExp extends RegExp {
+    test () { throw new Error('transform failed'); }
+  }
+  const failingOptions = () => ({ allowedAttributes: [new ThrowingRegExp('.')] });
+  const src = 'text{.red}';
+
+  it('should call errorHandler instead of logging when a transform throws', () => {
+    let called = null;
+    const md = Md().use(attrs, Object.assign(failingOptions(), {
+      errorHandler: (error, patternName) => { called = { error, patternName }; }
+    }));
+    md.render(src);
+    assert.ok(called, 'errorHandler should have been called');
+    assert.ok(called.error instanceof Error);
+    assert.equal(typeof called.patternName, 'string');
+  });
+
+  it('should propagate the error when errorHandler throws', () => {
+    const md = Md().use(attrs, Object.assign(failingOptions(), {
+      errorHandler: (error) => { throw error; }
+    }));
+    assert.throws(() => md.render(src), Error);
+  });
+
+  it('should not throw and fall back to console.error without errorHandler', () => {
+    const md = Md().use(attrs, failingOptions());
+    const original = console.error;
+    const logged = [];
+    console.error = (...args) => { logged.push(args.join(' ')); };
+    try {
+      assert.doesNotThrow(() => md.render(src));
+    } finally {
+      console.error = original;
+    }
+    assert.ok(logged.length > 0, 'should log to console.error');
+    assert.ok(logged.some(msg => msg.includes('markdown-it-attrs')), 'should mention markdown-it-attrs');
+  });
 });
 
 function describeTestsWithOptions(options, postText) {
@@ -42,10 +147,47 @@ function describeTestsWithOptions(options, postText) {
       assert.deepEqual(res, expected);
     });
 
+    it(replaceDelimiters('should omit values {.class ..css-module #id key=val .class.with.dot}', options), () => {
+      const src = '{.good-class .keep-me .ignore-class .good.class.with.dot .ignore.class.with.dot ..good ..ignore #good #ignore-id key=key-to-ignore key=good-key}';
+      const expected = [['class', 'good-class'], ['class', 'keep-me'], ['class', 'good.class.with.dot'], ['css-module', 'good'], ['id', 'good'], ['key', 'good-key']];
+      const newOptions = Object.assign({}, options, { allowedAttributeValues: [/^good/, 'keep-me'] });
+      const res = utils.getAttrs(replaceDelimiters(src, options), 0, newOptions);
+      assert.deepEqual(res, expected);
+    });
+
     it(replaceDelimiters('should parse attributes with = {attr=/id=1}', options), () => {
       const src = '{link=/some/page/in/app/id=1}';
       const expected = [['link', '/some/page/in/app/id=1']];
       const res = utils.getAttrs(replaceDelimiters(src, options), 0, options);
+      assert.deepEqual(res, expected);
+    });
+
+    it(replaceDelimiters('should parse attributes whose are ignored the key chars(\\t,\\n,\\f,\\s,/,>,",\',=) eg: {gt>=true slash/=trace i\\td "q\\fnu e\'r\\ny"=}', options), () => {
+      const src = '{gt>=true slash/=trace i\td "q\fu\ne\'r\ny"=}';
+      const expected = [['gt', 'true'], ['slash', 'trace'], ['id', ''], ['query', '']];
+      const res = utils.getAttrs(replaceDelimiters(src, options), 0, options);
+      assert.deepEqual(res, expected);
+    });
+
+    it(replaceDelimiters('should throw an error while calling `hasDelimiters` with an invalid `where` param', options), () => {
+      assert.throws(() => utils.hasDelimiters(0, options), { name: 'Error', message: /Should be "start", "end" or "only"/ });
+      assert.throws(() => utils.hasDelimiters('', options), { name: 'Error', message: /Should be "start", "end" or "only"/ });
+      assert.throws(() => utils.hasDelimiters(null, options), { name: 'Error', message: /Should be "start", "end" or "only"/ });
+      assert.throws(() => utils.hasDelimiters(undefined, options), { name: 'Error', message: /Should be "start", "end" or "only"/ });
+      assert.throws(() => utils.hasDelimiters('center', options)('has {#test} delimiters'), { name: 'Error', message: /expected 'start', 'end' or 'only'/ });
+    });
+
+    it('should escape html entities(&,<,>,") eg: <a href="?a&b">TOC</a>', () => {
+      const src = '<a href="a&b">TOC</a>';
+      const expected = '&lt;a href=&quot;a&amp;b&quot;&gt;TOC&lt;/a&gt;';
+      const res = utils.escapeHtml(src);
+      assert.deepEqual(res, expected);
+    });
+
+    it('should keep the origional input which is not contains(&,<,>,") char(s) eg: |a|b|', () => {
+      const src = '|a|b|';
+      const expected = '|a|b|';
+      const res = utils.escapeHtml(src);
       assert.deepEqual(res, expected);
     });
   });
@@ -252,13 +394,13 @@ function describeTestsWithOptions(options, postText) {
 
     it(replaceDelimiters('should support code blocks', options), () => {
       src = '```{.c a=1 #ii}\nfor i in range(10):\n```';
-      expected = '<pre><code class="c" a="1" id="ii">for i in range(10):\n</code></pre>\n';
+      expected = '<pre class="c" a="1" id="ii"><code>for i in range(10):\n</code></pre>\n';
       assert.equal(md.render(replaceDelimiters(src, options)), expected);
     });
 
     it(replaceDelimiters('should support code blocks with language defined', options), () => {
       src = '```python {.c a=1 #ii}\nfor i in range(10):\n```';
-      expected = '<pre><code class="c language-python" a="1" id="ii">for i in range(10):\n</code></pre>\n';
+      expected = '<pre class="c" a="1" id="ii"><code class="language-python">for i in range(10):\n</code></pre>\n';
       assert.equal(md.render(replaceDelimiters(src, options)), expected);
     });
 
@@ -319,6 +461,130 @@ function describeTestsWithOptions(options, postText) {
       assert.equal(md.render(replaceDelimiters(src, options)), expected);
     });
 
+    it(replaceDelimiters('should caculate table\'s colspan and/or rowspan', options), () => {
+      src = '| A | B | C | D |\n';
+      src += '| -- | -- | -- | -- |\n';
+      src += '| 1 | 11 | 111 | 1111 {rowspan=3} |\n';
+      src += '| 2 {colspan=2 rowspan=2} | 22 | 222 | 2222 |\n';
+      src += '| 3 | 33 | 333 | 3333 |\n';
+      src += '\n';
+      src += '{border=1}\n';
+      src += '| A |\n';
+      src += '| -- |\n';
+      src += '| 1 {colspan=3}|\n';
+      src += '| 2 |\n';
+      src += '| 3 |\n';
+      src += '\n';
+      src += '{border=2}\n';
+      src += '| A | B | C |\n';
+      src += '| -- | -- | -- |\n';
+      src += '| 1 {rowspan=2}| 11 | 111 |\n';
+      src += '| 2 {rowspan=2}| 22 | 222 |\n';
+      src += '| 3 | 33 | 333 |\n';
+      src += '\n';
+      src += '{border=3}\n';
+      src += '| A | B | C | D |\n';
+      src += '| -- | -- | -- | -- |\n';
+      src += '| 1 {colspan=2}| 11 {colspan=3} | 111| 1111 |\n';
+      src += '| 2 {rowspan=2} | 22 {colspan=2} | 222 | 2222 |\n';
+      src += '| 3 | 33 {colspan=4} | 333 | 3333 |\n';
+      src += '\n';
+      src += '{border=4}';
+      expected = '<table border="1">\n';
+      expected += '<thead>\n';
+      expected += '<tr>\n';
+      expected += '<th>A</th>\n';
+      expected += '<th>B</th>\n';
+      expected += '<th>C</th>\n';
+      expected += '<th>D</th>\n';
+      expected += '</tr>\n';
+      expected += '</thead>\n';
+      expected += '<tbody>\n';
+      expected += '<tr>\n';
+      expected += '<td>1</td>\n';
+      expected += '<td>11</td>\n';
+      expected += '<td>111</td>\n';
+      expected += '<td rowspan="3">1111</td>\n';
+      expected += '</tr>\n';
+      expected += '<tr>\n';
+      expected += '<td colspan="2" rowspan="2">2</td>\n';
+      expected += '<td>22</td>\n';
+      expected += '</tr>\n';
+      expected += '<tr>\n';
+      expected += '<td>3</td>\n';
+      expected += '</tr>\n';
+      expected += '</tbody>\n';
+      expected += '</table>\n';
+      expected += '<table border="2">\n';
+      expected += '<thead>\n';
+      expected += '<tr>\n';
+      expected += '<th>A</th>\n';
+      expected += '</tr>\n';
+      expected += '</thead>\n';
+      expected += '<tbody>\n';
+      expected += '<tr>\n';
+      expected += '<td colspan="3">1</td>\n';
+      expected += '</tr>\n';
+      expected += '<tr>\n';
+      expected += '<td>2</td>\n';
+      expected += '</tr>\n';
+      expected += '<tr>\n';
+      expected += '<td>3</td>\n';
+      expected += '</tr>\n';
+      expected += '</tbody>\n';
+      expected += '</table>\n';
+      expected += '<table border="3">\n';
+      expected += '<thead>\n';
+      expected += '<tr>\n';
+      expected += '<th>A</th>\n';
+      expected += '<th>B</th>\n';
+      expected += '<th>C</th>\n';
+      expected += '</tr>\n';
+      expected += '</thead>\n';
+      expected += '<tbody>\n';
+      expected += '<tr>\n';
+      expected += '<td rowspan="2">1</td>\n';
+      expected += '<td>11</td>\n';
+      expected += '<td>111</td>\n';
+      expected += '</tr>\n';
+      expected += '<tr>\n';
+      expected += '<td rowspan="2">2</td>\n';
+      expected += '<td>22</td>\n';
+      expected += '</tr>\n';
+      expected += '<tr>\n';
+      expected += '<td>3</td>\n';
+      expected += '<td>33</td>\n';
+      expected += '</tr>\n';
+      expected += '</tbody>\n';
+      expected += '</table>\n';
+      expected += '<table border="4">\n';
+      expected += '<thead>\n';
+      expected += '<tr>\n';
+      expected += '<th>A</th>\n';
+      expected += '<th>B</th>\n';
+      expected += '<th>C</th>\n';
+      expected += '<th>D</th>\n';
+      expected += '</tr>\n';
+      expected += '</thead>\n';
+      expected += '<tbody>\n';
+      expected += '<tr>\n';
+      expected += '<td colspan="2">1</td>\n';
+      expected += '<td colspan="3">11</td>\n';
+      expected += '</tr>\n';
+      expected += '<tr>\n';
+      expected += '<td rowspan="2">2</td>\n';
+      expected += '<td colspan="2">22</td>\n';
+      expected += '<td>222</td>\n';
+      expected += '</tr>\n';
+      expected += '<tr>\n';
+      expected += '<td>3</td>\n';
+      expected += '<td colspan="2">33</td>\n';
+      expected += '</tr>\n';
+      expected += '</tbody>\n';
+      expected += '</table>\n';
+      assert.equal(md.render(replaceDelimiters(src, options)), expected);
+    });
+
     it(replaceDelimiters('should support nested lists', options), () => {
       src =  '- item\n';
       src += '  - nested\n';
@@ -346,6 +612,20 @@ function describeTestsWithOptions(options, postText) {
       src =  '![alt](img.png){.a}';
       expected = '<figure><img src="img.png" alt="alt" class="a"></figure>\n';
       assert.equal(md.render(replaceDelimiters(src, options)), expected);
+    });
+
+    it(replaceDelimiters('should work with plugin katex', options), () => {
+      md = md.use(katex);
+      const mdWithOnlyKatex = Md().use(katex);
+      src = '$\\sqrt{a}$';
+      assert.equal(md.render(src), mdWithOnlyKatex.render(src));
+    });
+
+    it(replaceDelimiters('should work with plugin markdown-it-container', options), () => {
+      md = md.use(container, 'column');
+      src = ':::column {.column-container}\n\ncolumn test1 {.column-1}\n\n:::\n';
+      expected = '<div class="column-container column">\n<p class="column-1">column test1</p>\n</div>\n';
+      assert.equal(md.render(replaceDelimiters(src, options)), replaceDelimiters(expected, options));
     });
 
     it(replaceDelimiters('should not apply inside `code{.red}`', options), () => {
@@ -427,6 +707,52 @@ function describeTestsWithOptions(options, postText) {
       expected = replaceDelimiters('<p><img src="https://example.com/image.jpg" alt="" class="" height="100" width=""></p>\n', options);
       assert.equal(md.render(replaceDelimiters(src, options)), expected);
     });
+
+    it(replaceDelimiters('should work with heading anchor navigation plugins that add tokens before curly_attributes', options), () => {
+      // Simulate a navigation/heading-anchor plugin that registers its core rule
+      // using md.core.ruler.before('linkify', ...) – i.e. BEFORE curly_attributes –
+      // and appends link tokens after the heading text.  The attrs plugin must still
+      // be able to find and process the {#id} even though it is no longer the last
+      // child of the inline token.
+      function headingAnchorPlugin(mdInstance) {
+        mdInstance.core.ruler.before('linkify', 'heading_anchor_test', function(state) {
+          const Token = state.Token;
+          state.tokens.forEach((t, idx) => {
+            if (t.type !== 'heading_open') { return; }
+            const inlineToken = state.tokens[idx + 1];
+            const space = new Token('text', '', 0);
+            space.content = ' ';
+            const aOpen = new Token('link_open', 'a', 1);
+            aOpen.attrs = [['href', '#']];
+            const anchorSymbol = new Token('html_inline', '', 0);
+            anchorSymbol.content = '#';
+            const aClose = new Token('link_close', 'a', -1);
+            inlineToken.children.push(space, aOpen, anchorSymbol, aClose);
+          });
+        });
+      }
+
+      // headingAnchorPlugin is loaded FIRST, so its core rule runs before
+      // curly_attributes (which is registered by md.use(attrs) below).
+      const mdNav = Md();
+      headingAnchorPlugin(mdNav);
+      mdNav.use(attrs, options);
+
+      src = replaceDelimiters('## H2 heading {#my-id}', options);
+      expected = '<h2 id="my-id">H2 heading <a href="#">#</a></h2>\n';
+      assert.equal(mdNav.render(src), expected);
+    });
+
+
+    it('should not throw when using renderInline with a trailing {.class} (end of block pattern)', () => {
+      // renderInline() produces a token stream containing only the bare `inline` token,
+      // with no surrounding block tokens (no paragraph_open/paragraph_close). The
+      // 'end of block' pattern's transform walks past the end of that array looking
+      // for a block token to attach the attrs to, and crashes.
+      md = Md().use(attrs);
+      src = 'Some text{.text-danger}';
+      assert.doesNotThrow(() => { md.renderInline(src); });
+    });
   });
 }
 
@@ -440,13 +766,14 @@ function replaceDelimiters(text, options) {
 const goldmarkOverrides = {
   leftDelimiter: '{',
   rightDelimiter: '}',
+  fenceAttrsOnPre: false,
   overrides: {
     'img': 'below',
     'table': 'below',
     'li': 'none',
     'hr': 'below',
   }
-  
+
 };
 
 describe('markdown-it-attrs with some attributes positioned below', () => {
